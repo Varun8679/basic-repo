@@ -1,8 +1,11 @@
 const mongoose = require("mongoose");
 
-const mongoUrl = "mongodb://localhost:27017/varun";
+require("dotenv").config();
 
-mongoose.connect(mongoUrl, {
+// const mongoUrL = process.env.MONGODB_URL_LOCAL";
+const mongoUrL = process.env.MONGODB_URL;
+
+mongoose.connect(mongoUrL, {
   // useNewUrlParser: true,
   // useUnifiedTopology: true,
 });
