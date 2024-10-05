@@ -1,15 +1,17 @@
 const express = require("express");
 const router = express.Router();
-const { person } = require("../models/person");
-const {  generateToken } = require("./../jwt");
-const { json } = require("body-parser");
+const Person = require("../models/person");
+const { jwtAuthMiddleware, generateToken } = require("./../jwt");
 
+// POST route to add a person
 router.post("/signup", async (req, res) => {
   try {
-    const data = req.body;
+    const data = req.body; // Assuming the request body contains the person data
 
-    const newPerson = new person(data);
+    // Create a new Person document using the Mongoose model
+    const newPerson = new Person(data);
 
+    // Save the new person to the database
     const response = await newPerson.save();
     console.log("data saved");
 
@@ -17,98 +19,130 @@ router.post("/signup", async (req, res) => {
       id: response.id,
       username: response.username,
     };
-
     console.log(JSON.stringify(payload));
-
     const token = generateToken(payload);
-    console.log("token is :", token);
+    console.log("Token is : ", token);
+
     res.status(200).json({ response: response, token: token });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({ error: "Internal server error" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
-router.post('/login', async (req, res) => {
+// Login Route
+router.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
-    const user = await person.findOne({ username });
-    if (!user || !(await user.comparePassword(password))) {
-      return res.status(401).json({ error: 'Invalid username or password' });
+
+    const user = await Person.findOne({ username });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid username or password" });
     }
-    const payload = { id: user.id, username: user.username };
+
+    // Use the comparePassword method
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Invalid username or password" });
+    }
+
+    const payload = {
+      id: user.id,
+      username: user.username,
+    };
+
     const token = generateToken(payload);
     res.json({ token });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.get("/", async (req, res) => {
-  try {
-    const data = await person.find();
-    console.log("Data Fetched SuccessFully");
-    res.status(200).json(data);
-  } catch (error) {
-    console.log(error);
+    console.error("Login error:", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.get("/:worktype", async (req, res) => {
+// Profile route
+router.get("/profile", jwtAuthMiddleware, async (req, res) => {
   try {
-    const worktype = req.params.worktype;
-    if (worktype == "chef" || worktype == "manager" || worktype == "waiter") {
-      const response = await person.find({ work: worktype });
+    const userData = req.user;
+    console.log("User Data: ", userData);
+
+    const userId = userData.id;
+    const user = await Person.findById(userId);
+
+    res.status(200).json({ user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+// GET method to get the person
+router.get("/", jwtAuthMiddleware, async (req, res) => {
+  try {
+    const data = await Person.find();
+    console.log("data fetched");
+    res.status(200).json(data);
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+router.get("/:workType", async (req, res) => {
+  try {
+    const workType = req.params.workType; // // Extract the work type from the URL parameter
+    if (workType == "chef" || workType == "manager" || workType == "waiter") {
+      const response = await Person.find({ work: workType });
       console.log("response fetched");
       res.status(200).json(response);
     } else {
-      res.status(500).json("Internal server error");
+      res.status(404).json({ error: "Invalid work type" });
     }
-  } catch (error) {
-    console.log(error);
-    res.status(500).json("Internal server error");
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 router.put("/:id", async (req, res) => {
   try {
-    const personId = req.params.id;
-    const updatedPersonData = req.body;
+    const personId = req.params.id; // Extract the id from the URL parameter
+    const updatedPersonData = req.body; // Updated data for the person
 
-    const response = await person.findByIdAndUpdate(
+    const response = await Person.findByIdAndUpdate(
       personId,
       updatedPersonData,
       {
-        new: true,
-        runValidators: true,
+        new: true, // Return the updated document
+        runValidators: true, // Run Mongoose validation
       }
     );
+
     if (!response) {
-      return res.status(400).json({ error: "person is not exist" });
+      return res.status(404).json({ error: "Person not found" });
     }
-    console.log("Person updated successfully");
+
+    console.log("data updated");
     res.status(200).json(response);
-  } catch (error) {
-    console.log(error);
-    res.status(500).json("Internal server error");
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 router.delete("/:id", async (req, res) => {
   try {
-    const personId = req.params.id;
-    const response = await person.findByIdAndDelete(personId);
+    const personId = req.params.id; // Extract the person's ID from the URL parameter
 
+    // Assuming you have a Person model
+    const response = await Person.findByIdAndRemove(personId);
     if (!response) {
-      return res.status(400).json({ error: "person is not exist" });
+      return res.status(404).json({ error: "Person not found" });
     }
-    console.log("data deleted");
-    res.status(200).json("person deleted successfully");
-  } catch (error) {
-    console.log(error);
-    res.status(500).json("Internal server error");
+    console.log("data delete");
+    res.status(200).json({ message: "person Deleted Successfully" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
